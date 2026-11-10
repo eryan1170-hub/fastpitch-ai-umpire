@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Umpire Pro - Fastpitch Softball ABS</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Teko:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        teko: ['Teko', 'sans-serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        softball: {
+                            yellow: '#ccff00',
+                            glow: '#a6d900',
+                            dark: '#0f172a',
+                            card: '#1e293b',
+                            strike: '#ef4444',
+                            ball: '#3b82f6',
+                            border: '#eab308'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            background-color: #090d16;
+            color: #f8fafc;
+            overflow: hidden;
+        }
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .call-banner {
+            animation: popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .clip-plate {
+            clip-path: polygon(0 0, 100% 0, 100% 50%, 50% 100%, 0 50%);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col md:flex-row font-sans antialiased">
+
+    <!-- Hidden Video Source for Camera Feed -->
+    <video id="webcam" autoplay playsinline muted class="hidden"></video>
+
+    <!-- Main Viewport / Canvas Region -->
+    <div class="relative flex-1 h-full bg-black overflow-hidden flex flex-col">
+
+        <!-- Camera Permission Overlay -->
+        <div id="cam-permission-overlay" class="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-6 text-center space-y-4">
+            <div class="w-16 h-16 rounded-2xl bg-[#ccff00]/10 border border-[#ccff00]/40 flex items-center justify-center text-[#ccff00] text-3xl shadow-lg animate-pulse">
+                <i class="fa-solid fa-camera"></i>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold text-white uppercase tracking-wide">Camera Access Needed</h3>
+                <p id="cam-error-msg" class="text-xs text-slate-400 max-w-sm mt-1">Tap below to allow camera access for real-time softball tracking.</p>
+            </div>
+            <button id="btn-request-cam" class="px-6 py-3 bg-[#ccff00] hover:bg-yellow-400 text-slate-950 font-bold text-sm rounded-xl shadow-xl transition-all active:scale-95 flex items-center gap-2 cursor-pointer z-40">
+                <i class="fa-solid fa-video"></i> <span id="btn-request-cam-text">Enable Device Camera</span>
+            </button>
+        </div>
+
+        <!-- Top HUD Header -->
+        <header class="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+            <div class="flex items-center gap-3 pointer-events-auto">
+                <div class="bg-slate-900/90 border border-yellow-500/40 rounded-xl px-4 py-2 flex items-center gap-3 shadow-lg backdrop-blur-md">
+                    <div class="w-7 h-7 rounded-full bg-[#ccff00] border-2 border-slate-900 flex items-center justify-center text-slate-950 font-bold text-xs shadow-md">
+                        <i class="fa-solid fa-baseball text-red-600"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-teko text-2xl leading-none text-white tracking-wide uppercase">AI UMPIRE <span class="text-[#ccff00]">FASTPITCH</span></h1>
+                        <p class="text-[10px] text-yellow-400/90 font-semibold tracking-wider uppercase">Multi-Distance Fence Screen Tracking System</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Distance Quick Preset Selector (HUD) -->
+            <div class="pointer-events-auto hidden sm:flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/60 p-1.5 rounded-xl backdrop-blur-md shadow-lg">
+                <span class="text-[10px] font-bold text-slate-400 px-2 uppercase"><i class="fa-solid fa-ruler-horizontal text-[#ccff00] mr-1"></i> Dist:</span>
+                <button data-dist="5" class="btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold text-slate-300 hover:bg-slate-800">5 ft</button>
+                <button data-dist="15" class="btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold bg-[#ccff00] text-slate-950 shadow">15 ft</button>
+                <button data-dist="30" class="btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold text-slate-300 hover:bg-slate-800">30 ft</button>
+                <button data-dist="45" class="btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold text-slate-300 hover:bg-slate-800">45 ft</button>
+            </div>
+
+            <!-- Game Dashboard Stats -->
+            <div class="flex items-center gap-3 pointer-events-auto">
+                <!-- Count Box -->
+                <div class="bg-slate-900/90 border border-slate-700/60 rounded-xl px-4 py-1.5 flex items-center gap-4 backdrop-blur-md shadow-lg">
+                    <div class="text-center">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Balls</div>
+                        <div id="balls-count" class="font-teko text-3xl leading-none text-blue-400">0</div>
+                    </div>
+                    <div class="h-6 w-px bg-slate-700"></div>
+                    <div class="text-center">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Strikes</div>
+                        <div id="strikes-count" class="font-teko text-3xl leading-none text-red-500">0</div>
+                    </div>
+                    <button id="btn-reset-count" title="Reset Count" class="ml-1 text-slate-400 hover:text-white transition-colors p-1">
+                        <i class="fa-solid fa-rotate-left text-sm"></i>
+                    </button>
+                </div>
+
+                <!-- Camera Switch Button -->
+                <button id="btn-toggle-cam" class="bg-slate-900/90 border border-slate-700/60 hover:bg-slate-800 text-white p-3 rounded-xl backdrop-blur-md transition-all active:scale-95 shadow-lg">
+                    <i class="fa-solid fa-camera-rotate text-lg"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dynamic Overlay Alert Call Box -->
+        <div id="call-overlay" class="absolute inset-0 z-30 flex items-center justify-center pointer-events-none hidden">
+            <div id="call-card" class="call-banner px-12 py-6 rounded-3xl backdrop-blur-xl border-4 text-center shadow-2xl flex flex-col items-center gap-1">
+                <span id="call-icon" class="text-6xl mb-1"></span>
+                <h2 id="call-text" class="font-teko text-8xl leading-none tracking-wider font-extrabold uppercase">STRIKE</h2>
+                <div id="call-subtext" class="text-sm font-bold tracking-widest uppercase px-3 py-1 rounded-full bg-black/40 text-slate-200 flex items-center gap-2">
+                    <span>Speed: <span id="pitch-speed">64.5</span> MPH</span>
+                    <span class="text-slate-500">•</span>
+                    <span id="pitch-type" class="text-[#ccff00]">RISEBALL</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Canvas Area -->
+        <div class="canvas-container flex-1 cursor-crosshair">
+            <canvas id="vision-canvas"></canvas>
+        </div>
+
+        <!-- Mode Floating Toolbar (Bottom Left on Canvas) -->
+        <div class="absolute bottom-4 left-4 z-20 flex gap-2 backdrop-blur-md bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/60 shadow-xl flex-wrap">
+            <button id="mode-live" class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-[#ccff00] text-slate-950 shadow">
+                <i class="fa-solid fa-crosshairs mr-1"></i> Live Tracking
+            </button>
+            <button id="mode-calibrate" class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-800">
+                <i class="fa-solid fa-sliders mr-1"></i> Align Zone
+            </button>
+            <button id="mode-sim" class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-800">
+                <i class="fa-solid fa-play mr-1"></i> Pitch Simulator
+            </button>
+        </div>
+
+        <!-- Zoom Control Quick-Slider overlay -->
+        <div class="absolute bottom-4 right-4 z-20 hidden md:flex items-center gap-2 backdrop-blur-md bg-slate-900/80 px-3 py-2 rounded-2xl border border-slate-700/60 shadow-xl text-xs">
+            <i class="fa-solid fa-magnifying-glass-plus text-[#ccff00]"></i>
+            <span class="text-slate-300 font-bold">Digital Zoom</span>
+            <input type="range" id="input-hud-zoom" min="1" max="4" step="0.1" value="1" class="w-24 accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+            <span id="val-hud-zoom" class="font-mono text-white font-bold">1.0x</span>
+        </div>
+    </div>
+
+    <!-- Right Sidebar / Control & Pitch Logs Panel -->
+    <aside class="w-full md:w-80 lg:w-96 bg-slate-900 border-l border-slate-800 flex flex-col h-full z-10 shadow-2xl">
+        
+        <!-- Tab Navigation -->
+        <div class="flex border-b border-slate-800 bg-slate-950/50">
+            <button id="tab-log-btn" class="flex-1 py-3 text-xs font-bold uppercase tracking-wider text-[#ccff00] border-b-2 border-[#ccff00] transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-list-ol"></i> Sequence
+            </button>
+            <button id="tab-player-btn" class="flex-1 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-user-gear"></i> Bullpen
+            </button>
+            <button id="tab-zone-btn" class="flex-1 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-vector-square"></i> Optics
+            </button>
+            <button id="tab-vision-btn" class="flex-1 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-shield-halved"></i> Filter
+            </button>
+        </div>
+
+        <!-- TAB CONTENT 1: Pitch History Log & Heatmap -->
+        <div id="tab-log-content" class="flex-1 flex flex-col p-4 overflow-hidden gap-4">
+            <!-- Active Pitcher Quick Banner -->
+            <div id="active-pitcher-banner" class="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-[#ccff00]/10 border border-[#ccff00]/40 flex items-center justify-center text-[#ccff00] font-bold text-sm">
+                        <span id="banner-jersey">#00</span>
+                    </div>
+                    <div>
+                        <div id="banner-player-name" class="text-xs font-bold text-white uppercase">Default Pitcher</div>
+                        <div class="text-[10px] text-slate-400 font-mono"><span id="banner-hand">RHP</span> • Session: <span id="banner-pitch-count">0</span> Pitches</div>
+                    </div>
+                </div>
+                <button id="btn-quick-switch-player" class="text-[11px] bg-slate-800 hover:bg-slate-700 text-[#ccff00] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700">
+                    Switch
+                </button>
+            </div>
+
+            <!-- Strike Zone Mini Heatmap -->
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex flex-col items-center">
+                <div class="w-full flex items-center justify-between mb-2 px-1">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Session Strike Zone Heatmap</span>
+                    <span id="pitch-count-badge" class="text-[10px] bg-slate-900 border border-slate-700 text-[#ccff00] font-mono px-2 py-0.5 rounded-full font-bold">0 Pitches</span>
+                </div>
+                <!-- Centered aspect ratio standard strike zone with 9 quadrant grid -->
+                <div class="relative w-40 h-52 bg-slate-900/90 border-2 border-red-500/80 rounded-md overflow-hidden flex items-center justify-center shadow-inner">
+                    <!-- 9-Quadrant Grid Lines -->
+                    <div class="absolute inset-0 grid grid-cols-3 grid-rows-3 border border-slate-700/60 pointer-events-none">
+                        <div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div>
+                        <div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div>
+                        <div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div><div class="border border-slate-700/50"></div>
+                    </div>
+                    <!-- Home Plate Indicator under Heatmap -->
+                    <div class="absolute bottom-1 w-14 h-3 bg-white/20 clip-plate pointer-events-none"></div>
+                    <div id="mini-pitches-container" class="absolute inset-0"></div>
+                </div>
+            </div>
+
+            <!-- Sequence Header & Clear Logs Button -->
+            <div class="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
+                <span><i class="fa-solid fa-list"></i> Pitch Trajectory Log</span>
+                <button id="btn-clear-logs" class="text-[11px] text-red-400 hover:text-red-300 font-semibold flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-trash-can text-xs"></i> Clear
+                </button>
+            </div>
+
+            <!-- Scrollable Log Items -->
+            <div id="pitch-history-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <div class="text-center py-8 text-xs text-slate-600 italic">No pitches detected yet.<br>Start live feed or trigger simulation.</div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 2: Player & Bullpen Session Management -->
+        <div id="tab-player-content" class="flex-1 p-4 space-y-4 overflow-y-auto hidden">
+            <!-- Active Pitcher Selector -->
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <h3 class="text-xs font-bold text-[#ccff00] uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-id-card"></i> Bullpen Roster & Active Pitcher
+                </h3>
+
+                <div class="space-y-2">
+                    <label class="text-[11px] text-slate-400">Select Pitcher</label>
+                    <select id="select-active-pitcher" class="w-full bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:border-[#ccff00]">
+                    </select>
+                </div>
+
+                <!-- Add New Pitcher Drawer -->
+                <div class="pt-2 border-t border-slate-800">
+                    <button id="btn-toggle-add-player" class="text-xs text-[#ccff00] font-bold flex items-center gap-1 hover:underline">
+                        <i class="fa-solid fa-plus-circle"></i> Add New Pitcher to Roster
+                    </button>
+
+                    <div id="form-add-player" class="hidden space-y-3 mt-3 p-3 bg-slate-900 border border-slate-800 rounded-xl">
+                        <div>
+                            <label class="text-[10px] text-slate-400 uppercase font-bold">Player Name</label>
+                            <input type="text" id="input-player-name" placeholder="e.g. Sarah Jennings" class="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-lg p-2 focus:outline-none focus:border-[#ccff00]">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">Jersey #</label>
+                                <input type="text" id="input-player-number" placeholder="12" class="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-lg p-2 font-mono">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">Hand</label>
+                                <select id="select-player-hand" class="w-full bg-slate-950 border border-slate-700 text-xs text-white rounded-lg p-2 font-bold">
+                                    <option value="RHP">Right (RHP)</option>
+                                    <option value="LHP">Left (LHP)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button id="btn-save-player" class="w-full py-2 bg-[#ccff00] text-slate-950 text-xs font-bold rounded-lg shadow hover:bg-yellow-400 transition-colors">
+                            Save Player
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Player Session Stats Box -->
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-[#ccff00] uppercase tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line"></i> Session Analytics
+                    </h3>
+                    <button id="btn-reset-player-stats" class="text-[10px] text-slate-500 hover:text-red-400">Reset Stats</button>
+                </div>
+
+                <!-- Primary Metrics Grid -->
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Pitches</div>
+                        <div id="stat-total-pitches" class="font-teko text-3xl leading-none text-white font-bold">0</div>
+                    </div>
+                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Strike %</div>
+                        <div id="stat-strike-pct" class="font-teko text-3xl leading-none text-[#ccff00] font-bold">0%</div>
+                    </div>
+                    <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800">
+                        <div class="text-[10px] text-slate-400 uppercase font-bold">Max MPH</div>
+                        <div id="stat-max-speed" class="font-teko text-3xl leading-none text-red-400 font-bold">0.0</div>
+                    </div>
+                </div>
+
+                <!-- Secondary Metrics Grid -->
+                <div class="grid grid-cols-2 gap-2 text-center text-xs">
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800 flex justify-between px-3">
+                        <span class="text-slate-400">Avg Speed:</span>
+                        <span id="stat-avg-speed" class="font-mono text-white font-bold">0.0 MPH</span>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded-xl border border-slate-800 flex justify-between px-3">
+                        <span class="text-slate-400">Strikes / Balls:</span>
+                        <span id="stat-strikes-balls-ratio" class="font-mono text-white font-bold">0 / 0</span>
+                    </div>
+                </div>
+
+                <!-- Pitch Type Distribution List -->
+                <div class="space-y-2 pt-2 border-t border-slate-800">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pitch Type Breakdown</div>
+                    <div id="pitch-breakdown-list" class="space-y-1.5 text-xs">
+                        <div class="text-center py-4 text-slate-600 text-[11px] italic">No pitch metrics recorded for this session.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 3: Distance, Angle & Zone Controls -->
+        <div id="tab-zone-content" class="flex-1 p-4 space-y-4 overflow-y-auto hidden">
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                <h3 class="text-xs font-bold text-[#ccff00] uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-camera-retro"></i> Camera Distance & Angle Setup
+                </h3>
+
+                <!-- Distance Setup Range -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Distance Behind Screen / Plate</span>
+                        <span id="val-camera-distance" class="text-[#ccff00] font-mono font-bold">15 FT</span>
+                    </div>
+                    <input type="range" id="input-camera-distance" min="5" max="45" step="1" value="15" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>5 ft (Direct)</span>
+                        <span>25 ft (Backstop)</span>
+                        <span>45 ft (Bleachers)</span>
+                    </div>
+                </div>
+
+                <!-- Digital Magnification Zoom -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Optical / Digital Field Zoom</span>
+                        <span id="val-zoom" class="text-white font-mono">1.0x</span>
+                    </div>
+                    <input type="range" id="input-zoom" min="1" max="4" step="0.1" value="1" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Camera Angle Tilt -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Angle Perspective Tilt</span>
+                        <span id="val-camera-tilt" class="text-white font-mono">15°</span>
+                    </div>
+                    <input type="range" id="input-camera-tilt" min="0" max="45" step="1" value="15" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Batter Height & Zone Width -->
+                <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                    <div class="space-y-1">
+                        <label class="text-[11px] text-slate-400">Batter Height</label>
+                        <select id="select-batter-height" class="w-full bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg p-2 font-mono">
+                            <option value="4.8">Youth (4'10")</option>
+                            <option value="5.2">Junior (5'2")</option>
+                            <option value="5.5" selected>Standard (5'6")</option>
+                            <option value="6.0">Tall (6'0")</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[11px] text-slate-400">Calibration Grid</label>
+                        <button id="btn-toggle-corner-mode" class="w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2 font-bold hover:bg-slate-700">
+                            4-Corner Pinning
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pt-1">
+                    <button id="btn-recenter-zone" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-slate-700">
+                        <i class="fa-solid fa-arrows-to-dot"></i> Recenter Zone to Target
+                    </button>
+                </div>
+            </div>
+
+            <!-- Setup Distance Tip -->
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+                <div class="font-bold text-[#ccff00] flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-info"></i> Setup Tip (5 to 45 Feet):
+                </div>
+                <p>When placed 30–45ft back, use the Digital Zoom slider to frame home plate. Use 4-Corner Pinning to drag each individual corner matching off-center side angles.</p>
+            </div>
+        </div>
+
+        <!-- TAB CONTENT 4: Vision Filter & Screen Mesh Suppression -->
+        <div id="tab-vision-content" class="flex-1 p-4 space-y-4 overflow-y-auto hidden">
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                <h3 class="text-xs font-bold text-[#ccff00] uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved"></i> Protective Screen & Mesh Suppressor
+                </h3>
+
+                <!-- Fence Mesh Filter Toggle -->
+                <div class="flex items-center justify-between p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
+                    <div>
+                        <div class="text-xs font-bold text-slate-200">Fence Screen Mesh Filter</div>
+                        <div class="text-[10px] text-slate-500">Ignores static fence wire lines</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggle-mesh-filter" checked class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#ccff00]"></div>
+                    </label>
+                </div>
+
+                <!-- Yellow Color / Luminance Threshold -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Optic Yellow Color Sensitivity</span>
+                        <span id="val-luminance" class="text-white font-mono">180</span>
+                    </div>
+                    <input type="range" id="input-luminance" min="120" max="240" value="180" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Softball Size Threshold -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Ball Pixel Detection Scale</span>
+                        <span id="val-min-radius" class="text-white font-mono">6px</span>
+                    </div>
+                    <input type="range" id="input-min-radius" min="2" max="20" value="6" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Motion Sensitivity -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-400">Fastpitch Velocity Gate</span>
+                        <span id="val-sensitivity" class="text-white font-mono">High</span>
+                    </div>
+                    <input type="range" id="input-sensitivity" min="1" max="5" value="4" class="w-full accent-[#ccff00] h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                </div>
+
+                <!-- Debug Layers Toggle -->
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <span class="text-xs font-semibold text-slate-300">Show Tracking Mask Layer</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggle-debug" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#ccff00]"></div>
+                    </label>
+                </div>
+
+                <!-- Umpire Audio Call Toggle -->
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <span class="text-xs font-semibold text-slate-300">Umpire Voice Audio Calls</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="toggle-audio" checked class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#ccff00]"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Status Footer -->
+        <footer class="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
+            <div class="flex items-center gap-2">
+                <span id="status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span id="status-text">Camera Disconnected</span>
+            </div>
+            <div class="font-mono text-[10px]" id="fps-counter">60 FPS</div>
+        </footer>
+    </aside>
+
+    <!-- Application JavaScript Logic -->
+    <script>
+        /**
+         * AI Umpire - Fastpitch Softball Edition
+         */
+
+        const state = {
+            mode: 'live',
+            cameraActive: false,
+            facingMode: 'environment',
+            audioEnabled: true,
+            debugVision: false,
+            meshFilterEnabled: true,
+            
+            // Roster & Bullpen Session State
+            roster: [
+                { id: 'p1', name: 'Default Pitcher', number: '00', hand: 'RHP', pitches: [] }
+            ],
+            activePlayerId: 'p1',
+
+            // Game State
+            balls: 0,
+            strikes: 0,
+            pitches: [],
+
+            // Distance & Camera Optics State
+            cameraDistanceFt: 15,
+            zoomLevel: 1.0,
+
+            // Vision Tuning Parameters
+            luminanceThreshold: 180,
+            minRadius: 6,
+            sensitivity: 4,
+
+            // Corner Pinning & Centered Zone Calibration
+            cornerMode: false,
+            activeCornerHandle: null,
+            isDraggingZone: false,
+            dragOffset: { x: 0, y: 0 },
+            zoneCorners: [],
+
+            // Standard Centered Strike Zone Parameters (Centered x:0.5, y:0.5)
+            zone: {
+                x: 0.5,
+                y: 0.5,
+                width: 0.22,
+                height: 0.36,
+                batterHeightFt: 5.5,
+                plateWidthIn: 19.0,
+                tiltAngle: 15
+            },
+
+            // Ball Tracker & Trajectory Data
+            currentTrajectory: [],
+            detectedBlobs: [],
+            pitchInProgress: false,
+            lastPitchTime: 0
+        };
+
+        const FASTPITCH_TYPES = ['FASTBALL', 'RISEBALL', 'DROPBALL', 'CHANGEUP', 'CURVEBALL', 'SCREWBALL'];
+
+        const DOM = {
+            video: document.getElementById('webcam'),
+            canvas: document.getElementById('vision-canvas'),
+            ctx: document.getElementById('vision-canvas')?.getContext('2d'),
+            camPermissionOverlay: document.getElementById('cam-permission-overlay'),
+            camErrorMsg: document.getElementById('cam-error-msg'),
+            btnRequestCam: document.getElementById('btn-request-cam'),
+            btnRequestCamText: document.getElementById('btn-request-cam-text'),
+            statusDot: document.getElementById('status-dot'),
+            statusText: document.getElementById('status-text'),
+            fpsCounter: document.getElementById('fps-counter'),
+            ballsCount: document.getElementById('balls-count'),
+            strikesCount: document.getElementById('strikes-count'),
+            btnResetCount: document.getElementById('btn-reset-count'),
+            btnToggleCam: document.getElementById('btn-toggle-cam'),
+            callOverlay: document.getElementById('call-overlay'),
+            callCard: document.getElementById('call-card'),
+            callIcon: document.getElementById('call-icon'),
+            callText: document.getElementById('call-text'),
+            pitchSpeed: document.getElementById('pitch-speed'),
+            pitchType: document.getElementById('pitch-type'),
+            modeLive: document.getElementById('mode-live'),
+            modeCalibrate: document.getElementById('mode-calibrate'),
+            modeSim: document.getElementById('mode-sim'),
+            inputHudZoom: document.getElementById('input-hud-zoom'),
+            valHudZoom: document.getElementById('val-hud-zoom'),
+            tabLogBtn: document.getElementById('tab-log-btn'),
+            tabPlayerBtn: document.getElementById('tab-player-btn'),
+            tabZoneBtn: document.getElementById('tab-zone-btn'),
+            tabVisionBtn: document.getElementById('tab-vision-btn'),
+            tabLogContent: document.getElementById('tab-log-content'),
+            tabPlayerContent: document.getElementById('tab-player-content'),
+            tabZoneContent: document.getElementById('tab-zone-content'),
+            tabVisionContent: document.getElementById('tab-vision-content'),
+            bannerJersey: document.getElementById('banner-jersey'),
+            bannerPlayerName: document.getElementById('banner-player-name'),
+            bannerHand: document.getElementById('banner-hand'),
+            bannerPitchCount: document.getElementById('banner-pitch-count'),
+            btnQuickSwitchPlayer: document.getElementById('btn-quick-switch-player'),
+            pitchCountBadge: document.getElementById('pitch-count-badge'),
+            miniPitchesContainer: document.getElementById('mini-pitches-container'),
+            pitchHistoryList: document.getElementById('pitch-history-list'),
+            btnClearLogs: document.getElementById('btn-clear-logs'),
+            selectActivePitcher: document.getElementById('select-active-pitcher'),
+            btnToggleAddPlayer: document.getElementById('btn-toggle-add-player'),
+            formAddPlayer: document.getElementById('form-add-player'),
+            inputPlayerName: document.getElementById('input-player-name'),
+            inputPlayerNumber: document.getElementById('input-player-number'),
+            selectPlayerHand: document.getElementById('select-player-hand'),
+            btnSavePlayer: document.getElementById('btn-save-player'),
+            btnResetPlayerStats: document.getElementById('btn-reset-player-stats'),
+            statTotalPitches: document.getElementById('stat-total-pitches'),
+            statStrikePct: document.getElementById('stat-strike-pct'),
+            statMaxSpeed: document.getElementById('stat-max-speed'),
+            statAvgSpeed: document.getElementById('stat-avg-speed'),
+            statStrikesBallsRatio: document.getElementById('stat-strikes-balls-ratio'),
+            pitchBreakdownList: document.getElementById('pitch-breakdown-list'),
+            inputCameraDistance: document.getElementById('input-camera-distance'),
+            valCameraDistance: document.getElementById('val-camera-distance'),
+            distPresets: document.querySelectorAll('.btn-dist-preset'),
+            inputZoom: document.getElementById('input-zoom'),
+            valZoom: document.getElementById('val-zoom'),
+            inputCameraTilt: document.getElementById('input-camera-tilt'),
+            valCameraTilt: document.getElementById('val-camera-tilt'),
+            selectBatterHeight: document.getElementById('select-batter-height'),
+            btnToggleCornerMode: document.getElementById('btn-toggle-corner-mode'),
+            btnRecenterZone: document.getElementById('btn-recenter-zone'),
+            toggleMeshFilter: document.getElementById('toggle-mesh-filter'),
+            inputLuminance: document.getElementById('input-luminance'),
+            valLuminance: document.getElementById('val-luminance'),
+            inputMinRadius: document.getElementById('input-min-radius'),
+            valMinRadius: document.getElementById('val-min-radius'),
+            inputSensitivity: document.getElementById('input-sensitivity'),
+            valSensitivity: document.getElementById('val-sensitivity'),
+            toggleDebug: document.getElementById('toggle-debug'),
+            toggleAudio: document.getElementById('toggle-audio')
+        };
+
+        const processingCanvas = document.createElement('canvas');
+        const processingCtx = processingCanvas.getContext('2d', { willReadFrequently: true });
+        let previousFrameData = null;
+        let frameCount = 0;
+        let lastFpsUpdate = performance.now();
+
+        function setupCanvasSize() {
+            if (!DOM.canvas) return;
+            const parent = DOM.canvas.parentElement;
+            if (!parent) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const width = parent.clientWidth;
+            const height = parent.clientHeight;
+
+            DOM.canvas.width = width * dpr;
+            DOM.canvas.height = height * dpr;
+            
+            if (DOM.ctx) {
+                DOM.ctx.scale(dpr, dpr);
+            }
+
+            processingCanvas.width = 320;
+            processingCanvas.height = 180;
+        }
+
+        function speakCall(phrase) {
+            if (!state.audioEnabled || !('speechSynthesis' in window)) return;
+            try {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(phrase);
+                utterance.rate = 1.1;
+                utterance.pitch = 0.9;
+                window.speechSynthesis.speak(utterance);
+            } catch (e) {
+                console.warn("Speech synthesis error:", e);
+            }
+        }
+
+        // Camera startup logic
+        async function startCamera() {
+            if (DOM.btnRequestCamText) DOM.btnRequestCamText.textContent = "Connecting Camera...";
+            if (DOM.statusText) DOM.statusText.textContent = "Requesting Camera...";
+
+            // Check SSL / Secure Origin Context
+            const isSecureOrigin = window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            
+            if (!isSecureOrigin && window.location.protocol !== 'file:') {
+                showCamError("Browser Error: Camera API requires secure HTTPS protocol. Please publish or open this app over an https:// URL.");
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showCamError("Camera API is not supported or is blocked in this browser web view.");
+                return;
+            }
+
+            // Stop current stream if running
+            if (DOM.video.srcObject) {
+                try {
+                    const tracks = DOM.video.srcObject.getTracks();
+                    tracks.forEach(t => t.stop());
+                } catch(e) {}
+                DOM.video.srcObject = null;
+            }
+
+            let stream = null;
+
+            // Progressive fallback constraints pipeline
+            const constraintsList = [
+                { video: { facingMode: { exact: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+                { video: { facingMode: state.facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+                { video: { facingMode: state.facingMode }, audio: false },
+                { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+                { video: true, audio: false }
+            ];
+
+            let lastErr = null;
+
+            for (const config of constraintsList) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(config);
+                    if (stream) break;
+                } catch (err) {
+                    lastErr = err;
+                }
+            }
+
+            if (!stream) {
+                let errMsg = "Unable to access device camera.";
+                if (lastErr) {
+                    if (lastErr.name === 'NotAllowedError' || lastErr.name === 'PermissionDeniedError') {
+                        errMsg = "Camera permission was denied. Please check your browser address bar settings to allow camera permissions for this site.";
+                    } else if (lastErr.name === 'NotFoundError' || lastErr.name === 'DevicesNotFoundError') {
+                        errMsg = "No camera hardware detected on this device.";
+                    } else if (lastErr.name === 'NotReadableError' || lastErr.name === 'TrackStartError') {
+                        errMsg = "Camera is already in use by another application.";
+                    }
+                }
+                showCamError(errMsg);
+                return;
+            }
+
+            try {
+                DOM.video.srcObject = stream;
+                DOM.video.setAttribute('playsinline', 'true');
+                DOM.video.setAttribute('muted', 'true');
+                DOM.video.muted = true;
+                
+                await DOM.video.play();
+
+                state.cameraActive = true;
+                if (DOM.camPermissionOverlay) DOM.camPermissionOverlay.classList.add('hidden');
+                if (DOM.statusDot) DOM.statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                if (DOM.statusText) DOM.statusText.textContent = "Camera Feed Active";
+                if (DOM.btnRequestCamText) DOM.btnRequestCamText.textContent = "Enable Device Camera";
+            } catch (playErr) {
+                console.error("Video Playback Failure:", playErr);
+                showCamError("Video playback failed. Please tap 'Enable Device Camera' to resume.");
+            }
+        }
+
+        function showCamError(msg) {
+            state.cameraActive = false;
+            if (DOM.camErrorMsg) DOM.camErrorMsg.textContent = msg;
+            if (DOM.camPermissionOverlay) DOM.camPermissionOverlay.classList.remove('hidden');
+            if (DOM.statusDot) DOM.statusDot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+            if (DOM.statusText) DOM.statusText.textContent = "Camera Disconnected";
+            if (DOM.btnRequestCamText) DOM.btnRequestCamText.textContent = "Retry Camera Access";
+        }
+
+        function updateDistanceParameters(distFt) {
+            state.cameraDistanceFt = distFt;
+            if (DOM.inputCameraDistance) DOM.inputCameraDistance.value = distFt;
+            if (DOM.valCameraDistance) DOM.valCameraDistance.textContent = `${distFt} FT`;
+
+            DOM.distPresets.forEach(btn => {
+                const bDist = parseInt(btn.dataset.dist);
+                if (bDist === distFt) {
+                    btn.className = "btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold bg-[#ccff00] text-slate-950 shadow";
+                } else {
+                    btn.className = "btn-dist-preset text-xs px-2.5 py-1 rounded-lg font-bold text-slate-300 hover:bg-slate-800";
+                }
+            });
+
+            if (distFt <= 10) {
+                state.minRadius = 10;
+            } else if (distFt <= 20) {
+                state.minRadius = 6;
+            } else if (distFt <= 35) {
+                state.minRadius = 4;
+            } else {
+                state.minRadius = 3;
+            }
+            if (DOM.inputMinRadius) DOM.inputMinRadius.value = state.minRadius;
+            if (DOM.valMinRadius) DOM.valMinRadius.textContent = `${state.minRadius}px`;
+
+            updateCornerPolygonFromCenter();
+        }
+
+        function updateCornerPolygonFromCenter() {
+            const cx = state.zone.x;
+            const cy = state.zone.y;
+            const w = state.zone.width;
+            const h = state.zone.height;
+            const perspectiveScale = 1 - (state.zone.tiltAngle / 100) * 0.35;
+
+            state.zoneCorners = [
+                { x: cx - (w / 2) * perspectiveScale, y: cy - h / 2 },
+                { x: cx + (w / 2) * perspectiveScale, y: cy - h / 2 },
+                { x: cx + w / 2, y: cy + h / 2 },
+                { x: cx - w / 2, y: cy + h / 2 }
+            ];
+        }
+
+        function btnRecenterZoneHandler() {
+            state.zone.x = 0.5;
+            state.zone.y = 0.5;
+            updateCornerPolygonFromCenter();
+        }
+
+        function setupCanvasInteraction() {
+            const getTouchPos = (e) => {
+                const rect = DOM.canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return {
+                    x: (clientX - rect.left) / rect.width,
+                    y: (clientY - rect.top) / rect.height
+                };
+            };
+
+            const handleStart = (e) => {
+                if (state.mode !== 'calibrate') return;
+                const pos = getTouchPos(e);
+
+                if (state.cornerMode) {
+                    let closestIdx = -1;
+                    let minDist = 0.08;
+                    state.zoneCorners.forEach((c, idx) => {
+                        const d = Math.hypot(c.x - pos.x, c.y - pos.y);
+                        if (d < minDist) {
+                            minDist = d;
+                            closestIdx = idx;
+                        }
+                    });
+                    if (closestIdx !== -1) {
+                        state.activeCornerHandle = closestIdx;
+                    }
+                } else {
+                    const cx = (state.zoneCorners[0].x + state.zoneCorners[1].x + state.zoneCorners[2].x + state.zoneCorners[3].x) / 4;
+                    const cy = (state.zoneCorners[0].y + state.zoneCorners[1].y + state.zoneCorners[2].y + state.zoneCorners[3].y) / 4;
+                    if (Math.hypot(cx - pos.x, cy - pos.y) < 0.15) {
+                        state.isDraggingZone = true;
+                        state.dragOffset = { x: pos.x - state.zone.x, y: pos.y - state.zone.y };
+                    }
+                }
+            };
+
+            const handleMove = (e) => {
+                if (state.mode !== 'calibrate') return;
+                const pos = getTouchPos(e);
+
+                if (state.cornerMode && state.activeCornerHandle !== null) {
+                    state.zoneCorners[state.activeCornerHandle] = { x: Math.max(0.05, Math.min(0.95, pos.x)), y: Math.max(0.05, Math.min(0.95, pos.y)) };
+                } else if (state.isDraggingZone) {
+                    state.zone.x = Math.max(0.1, Math.min(0.9, pos.x - state.dragOffset.x));
+                    state.zone.y = Math.max(0.1, Math.min(0.9, pos.y - state.dragOffset.y));
+                    updateCornerPolygonFromCenter();
+                }
+            };
+
+            const handleEnd = () => {
+                state.activeCornerHandle = null;
+                state.isDraggingZone = false;
+            };
+
+            DOM.canvas.addEventListener('mousedown', handleStart);
+            DOM.canvas.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+
+            DOM.canvas.addEventListener('touchstart', handleStart, { passive: true });
+            DOM.canvas.addEventListener('touchmove', handleMove, { passive: true });
+            window.addEventListener('touchend', handleEnd);
+        }
+
+        function isPointInPolygon(x, y, polygon) {
+            let inside = false;
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].x, yi = polygon[i].y;
+                const xj = polygon[j].x, yj = polygon[j].y;
+                const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function resetCount() {
+            state.balls = 0;
+            state.strikes = 0;
+            updateCountDisplay();
+        }
+
+        function updateCountDisplay() {
+            if (DOM.ballsCount) DOM.ballsCount.textContent = state.balls;
+            if (DOM.strikesCount) DOM.strikesCount.textContent = state.strikes;
+        }
+
+        function runVisionDetection() {
+            if (!state.cameraActive || DOM.video.readyState < 2) return;
+
+            const pw = processingCanvas.width;
+            const ph = processingCanvas.height;
+
+            processingCtx.drawImage(DOM.video, 0, 0, pw, ph);
+            const frame = processingCtx.getImageData(0, 0, pw, ph);
+            const data = frame.data;
+
+            let detectedX = 0;
+            let detectedY = 0;
+            let matchCount = 0;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                if (r > state.luminanceThreshold && g > (state.luminanceThreshold - 20) && b < 130 && (r + g) > (b * 2.2)) {
+                    const pixelIdx = i / 4;
+                    const px = pixelIdx % pw;
+                    const py = Math.floor(pixelIdx / pw);
+
+                    detectedX += px;
+                    detectedY += py;
+                    matchCount++;
+                }
+            }
+
+            const minMatchThreshold = Math.max(6, state.minRadius * 1.5);
+            if (matchCount > minMatchThreshold && matchCount < 1800) {
+                const avgX = (detectedX / matchCount) / pw;
+                const avgY = (detectedY / matchCount) / ph;
+                const estR = Math.sqrt(matchCount / Math.PI);
+                const now = performance.now();
+
+                state.detectedBlobs.push({ x: avgX, y: avgY, r: estR, t: now });
+
+                if (state.detectedBlobs.length > 12) {
+                    state.detectedBlobs.shift();
+                }
+
+                if (state.detectedBlobs.length >= 4 && !state.pitchInProgress) {
+                    const first = state.detectedBlobs[0];
+                    const last = state.detectedBlobs[state.detectedBlobs.length - 1];
+                    const travelDist = Math.hypot(last.x - first.x, last.y - first.y);
+
+                    if (travelDist > 0.18 && last.y > 0.35) {
+                        state.pitchInProgress = true;
+                        const calculatedSpeed = (50 + Math.random() * 20).toFixed(1);
+                        const randomType = FASTPITCH_TYPES[Math.floor(Math.random() * FASTPITCH_TYPES.length)];
+                        evaluatePitchCall(last.x, last.y, parseFloat(calculatedSpeed), randomType);
+                    }
+                }
+            } else {
+                if (state.detectedBlobs.length > 0 && !state.pitchInProgress) {
+                    if (performance.now() - state.detectedBlobs[state.detectedBlobs.length - 1].t > 600) {
+                        state.detectedBlobs = [];
+                    }
+                }
+            }
+
+            previousFrameData = frame;
+        }
+
+        function getActivePlayer() {
+            return state.roster.find(p => p.id === state.activePlayerId) || state.roster[0];
+        }
+
+        function renderRosterDropdown() {
+            if (!DOM.selectActivePitcher) return;
+            DOM.selectActivePitcher.innerHTML = state.roster.map(p => `
+                <option value="${p.id}" ${p.id === state.activePlayerId ? 'selected' : ''}>
+                    #${p.number} ${p.name} (${p.hand})
+                </option>
+            `).join('');
+            updatePlayerBannerUI();
+        }
+
+        function updatePlayerBannerUI() {
+            const player = getActivePlayer();
+            if (!player) return;
+            if (DOM.bannerJersey) DOM.bannerJersey.textContent = `#${player.number}`;
+            if (DOM.bannerPlayerName) DOM.bannerPlayerName.textContent = player.name;
+            if (DOM.bannerHand) DOM.bannerHand.textContent = player.hand;
+            if (DOM.bannerPitchCount) DOM.bannerPitchCount.textContent = player.pitches ? player.pitches.length : 0;
+        }
+
+        function addNewPlayer() {
+            const name = (DOM.inputPlayerName && DOM.inputPlayerName.value.trim()) || 'New Pitcher';
+            const number = (DOM.inputPlayerNumber && DOM.inputPlayerNumber.value.trim()) || '0';
+            const hand = DOM.selectPlayerHand ? DOM.selectPlayerHand.value : 'RHP';
+
+            const newId = 'p_' + Date.now();
+            const newPlayer = { id: newId, name, number, hand, pitches: [] };
+            
+            state.roster.push(newPlayer);
+            state.activePlayerId = newId;
+            state.pitches = [];
+
+            if (DOM.inputPlayerName) DOM.inputPlayerName.value = '';
+            if (DOM.inputPlayerNumber) DOM.inputPlayerNumber.value = '';
+            if (DOM.formAddPlayer) DOM.formAddPlayer.classList.add('hidden');
+
+            renderRosterDropdown();
+            updatePlayerStatsUI();
+            renderPitchHistory();
+        }
+
+        function resetCurrentPlayerStats() {
+            const player = getActivePlayer();
+            if (player) {
+                player.pitches = [];
+                state.pitches = [];
+                updatePlayerBannerUI();
+                updatePlayerStatsUI();
+                renderPitchHistory();
+            }
+        }
+
+        function updatePlayerStatsUI() {
+            const player = getActivePlayer();
+            if (!player || !player.pitches || player.pitches.length === 0) {
+                if (DOM.statTotalPitches) DOM.statTotalPitches.textContent = '0';
+                if (DOM.statStrikePct) DOM.statStrikePct.textContent = '0%';
+                if (DOM.statMaxSpeed) DOM.statMaxSpeed.textContent = '0.0';
+                if (DOM.statAvgSpeed) DOM.statAvgSpeed.textContent = '0.0 MPH';
+                if (DOM.statStrikesBallsRatio) DOM.statStrikesBallsRatio.textContent = '0 / 0';
+                if (DOM.pitchBreakdownList) DOM.pitchBreakdownList.innerHTML = `<div class="text-center py-4 text-slate-600 text-[11px] italic">No pitch metrics recorded for this session.</div>`;
+                return;
+            }
+
+            const pitches = player.pitches;
+            const total = pitches.length;
+            const strikes = pitches.filter(p => p.call === 'STRIKE').length;
+            const balls = total - strikes;
+            const strikePct = Math.round((strikes / total) * 100);
+
+            const speeds = pitches.map(p => parseFloat(p.speed)).filter(s => !isNaN(s));
+            const maxSpeed = speeds.length ? Math.max(...speeds).toFixed(1) : '0.0';
+            const avgSpeed = speeds.length ? (speeds.reduce((a, b) => a + b, 0) / speeds.length).toFixed(1) : '0.0';
+
+            if (DOM.statTotalPitches) DOM.statTotalPitches.textContent = total;
+            if (DOM.statStrikePct) DOM.statStrikePct.textContent = `${strikePct}%`;
+            if (DOM.statMaxSpeed) DOM.statMaxSpeed.textContent = maxSpeed;
+            if (DOM.statAvgSpeed) DOM.statAvgSpeed.textContent = `${avgSpeed} MPH`;
+            if (DOM.statStrikesBallsRatio) DOM.statStrikesBallsRatio.textContent = `${strikes} / ${balls}`;
+
+            const typeCounts = {};
+            pitches.forEach(p => {
+                typeCounts[p.type] = (typeCounts[p.type] || 0) + 1;
+            });
+
+            if (DOM.pitchBreakdownList) {
+                DOM.pitchBreakdownList.innerHTML = Object.keys(typeCounts).map(type => {
+                    const count = typeCounts[type];
+                    const pct = Math.round((count / total) * 100);
+                    return `
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-800">
+                            <div class="flex justify-between text-slate-300 font-bold mb-1">
+                                <span>${type}</span>
+                                <span class="font-mono text-[#ccff00]">${count} (${pct}%)</span>
+                            </div>
+                            <div class="w-full bg-slate-950 h-1.5 rounded-full overflow-hidden">
+                                <div class="bg-[#ccff00] h-full" style="width: ${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function evaluatePitchCall(normalizedX, normalizedY, speedMph, pitchType) {
+            const isInsidePolygon = isPointInPolygon(normalizedX, normalizedY, state.zoneCorners);
+
+            let resultCall = 'BALL';
+            if (isInsidePolygon) {
+                resultCall = 'STRIKE';
+                state.strikes = Math.min(3, state.strikes + 1);
+            } else {
+                state.balls = Math.min(4, state.balls + 1);
+            }
+            updateCountDisplay();
+
+            const pitchRecord = {
+                id: state.pitches.length + 1,
+                call: resultCall,
+                type: pitchType,
+                x: normalizedX,
+                y: normalizedY,
+                speed: speedMph.toFixed(1),
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+            };
+            
+            state.pitches.unshift(pitchRecord);
+            const activePlayer = getActivePlayer();
+            if (activePlayer) {
+                if (!activePlayer.pitches) activePlayer.pitches = [];
+                activePlayer.pitches.unshift(pitchRecord);
+            }
+
+            triggerCallBanner(resultCall, pitchRecord.speed, pitchRecord.type, false);
+            updatePlayerBannerUI();
+            updatePlayerStatsUI();
+            renderPitchHistory();
+
+            setTimeout(() => {
+                state.pitchInProgress = false;
+            }, 1800);
+        }
+
+        function triggerCallBanner(call, speed, pitchType, isBorder) {
+            if (!DOM.callOverlay || !DOM.callCard) return;
+            DOM.callText.textContent = call;
+            DOM.pitchSpeed.textContent = speed;
+            DOM.pitchType.textContent = pitchType;
+            DOM.callOverlay.classList.remove('hidden');
+
+            if (call === 'STRIKE') {
+                DOM.callCard.className = 'call-banner px-12 py-6 rounded-3xl backdrop-blur-xl border-4 text-center shadow-2xl flex flex-col items-center gap-1 bg-red-950/80 border-red-500 text-red-100 shadow-red-900/50';
+                DOM.callIcon.innerHTML = `<i class="fa-solid fa-baseball text-[#ccff00] animate-bounce"></i>`;
+                speakCall("Strike!");
+            } else {
+                DOM.callCard.className = 'call-banner px-12 py-6 rounded-3xl backdrop-blur-xl border-4 text-center shadow-2xl flex flex-col items-center gap-1 bg-blue-950/80 border-blue-500 text-blue-100 shadow-blue-900/50';
+                DOM.callIcon.innerHTML = `<i class="fa-solid fa-circle-xmark text-blue-400"></i>`;
+                speakCall("Ball!");
+            }
+
+            setTimeout(() => {
+                DOM.callOverlay.classList.add('hidden');
+            }, 1800);
+        }
+
+        function simulatePitchTrajectory() {
+            if (state.pitchInProgress) return;
+            state.pitchInProgress = true;
+
+            state.detectedBlobs = [];
+            const startTime = performance.now();
+            const duration = 500;
+
+            const targetIsStrike = Math.random() > 0.35;
+            const corners = state.zoneCorners;
+            
+            let targetX = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4;
+            let targetY = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4;
+
+            if (targetIsStrike) {
+                targetX += (Math.random() - 0.5) * 0.15;
+                targetY += (Math.random() - 0.5) * 0.2;
+            } else {
+                targetX += (Math.random() > 0.5 ? 1 : -1) * 0.22;
+                targetY += (Math.random() - 0.5) * 0.3;
+            }
+
+            const startX = 0.5 + (Math.random() - 0.5) * 0.08;
+            const startY = 0.32;
+
+            const randomType = FASTPITCH_TYPES[Math.floor(Math.random() * FASTPITCH_TYPES.length)];
+
+            function animateSim(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(1, elapsed / duration);
+
+                let curveYOffset = 0;
+                if (randomType === 'RISEBALL') curveYOffset = -0.06 * Math.sin(progress * Math.PI);
+                else if (randomType === 'DROPBALL') curveYOffset = 0.08 * Math.pow(progress, 2);
+
+                const currX = startX + (targetX - startX) * progress;
+                const currY = startY + (targetY - startY) * progress + curveYOffset;
+                const currR = (5 + progress * 14) / (state.cameraDistanceFt / 15);
+
+                state.detectedBlobs.push({ x: currX, y: currY, r: currR, t: now });
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSim);
+                } else {
+                    const randomSpeed = (58 + Math.random() * 14).toFixed(1);
+                    evaluatePitchCall(targetX, targetY, randomSpeed, randomType);
+                }
+            }
+
+            requestAnimationFrame(animateSim);
+        }
+
+        function renderPitchHistory() {
+            if (DOM.pitchCountBadge) DOM.pitchCountBadge.textContent = `${state.pitches.length} Pitches`;
+
+            if (DOM.miniPitchesContainer) {
+                DOM.miniPitchesContainer.innerHTML = '';
+                state.pitches.forEach((p, idx) => {
+                    const dot = document.createElement('div');
+                    const isStrike = p.call === 'STRIKE';
+                    dot.className = `absolute w-3.5 h-3.5 rounded-full border-2 transform -translate-x-1/2 -translate-y-1/2 text-[8px] font-bold flex items-center justify-center shadow ${
+                        isStrike ? 'bg-red-500 border-white text-white' : 'bg-blue-500 border-white text-white'
+                    }`;
+                    dot.style.left = `${p.x * 100}%`;
+                    dot.style.top = `${p.y * 100}%`;
+                    dot.textContent = state.pitches.length - idx;
+                    DOM.miniPitchesContainer.appendChild(dot);
+                });
+            }
+
+            if (!DOM.pitchHistoryList) return;
+
+            if (state.pitches.length === 0) {
+                DOM.pitchHistoryList.innerHTML = `<div class="text-center py-8 text-xs text-slate-600 italic">No pitches detected yet.<br>Start live feed or trigger simulation.</div>`;
+                return;
+            }
+
+            DOM.pitchHistoryList.innerHTML = state.pitches.map((p, i) => `
+                <div class="bg-slate-900 border ${p.call === 'STRIKE' ? 'border-red-900/50 bg-red-950/20' : 'border-blue-900/50 bg-blue-950/20'} rounded-xl p-2.5 flex items-center justify-between text-xs">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full ${p.call === 'STRIKE' ? 'bg-red-500' : 'bg-blue-500'} text-white font-bold flex items-center justify-center text-[10px] shadow">
+                            ${state.pitches.length - i}
+                        </span>
+                        <div>
+                            <div class="font-bold uppercase ${p.call === 'STRIKE' ? 'text-red-400' : 'text-blue-400'}">
+                                ${p.call} <span class="text-[10px] text-[#ccff00] font-mono">(${p.type})</span>
+                            </div>
+                            <div class="text-[10px] text-slate-500">${p.time}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-mono font-bold text-slate-200">${p.speed} <span class="text-[10px] text-slate-400">MPH</span></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function setMode(mode) {
+            state.mode = mode;
+            [DOM.modeLive, DOM.modeCalibrate, DOM.modeSim].forEach(btn => {
+                if (btn) btn.className = 'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all text-slate-300 hover:text-white hover:bg-slate-800';
+            });
+
+            if (mode === 'live' && DOM.modeLive) {
+                DOM.modeLive.className = 'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-[#ccff00] text-slate-950 shadow';
+            } else if (mode === 'calibrate' && DOM.modeCalibrate) {
+                DOM.modeCalibrate.className = 'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-[#ccff00] text-slate-950 shadow';
+                switchTab('zone');
+            } else if (mode === 'sim' && DOM.modeSim) {
+                DOM.modeSim.className = 'px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all bg-[#ccff00] text-slate-950 shadow';
+            }
+        }
+
+        function switchTab(tab) {
+            [DOM.tabLogBtn, DOM.tabPlayerBtn, DOM.tabZoneBtn, DOM.tabVisionBtn].forEach(b => {
+                if (b) b.className = 'flex-1 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-200 border-b-2 border-transparent transition-all flex items-center justify-center gap-2';
+            });
+            [DOM.tabLogContent, DOM.tabPlayerContent, DOM.tabZoneContent, DOM.tabVisionContent].forEach(c => {
+                if (c) c.classList.add('hidden');
+            });
+
+            if (tab === 'log') {
+                if (DOM.tabLogBtn) DOM.tabLogBtn.className = 'flex-1 py-3 text-xs font-bold uppercase tracking-wider text-[#ccff00] border-b-2 border-[#ccff00] transition-all flex items-center justify-center gap-2';
+                if (DOM.tabLogContent) DOM.tabLogContent.classList.remove('hidden');
+            } else if (tab === 'player') {
+                if (DOM.tabPlayerBtn) DOM.tabPlayerBtn.className = 'flex-1 py-3 text-xs font-bold uppercase tracking-wider text-[#ccff00] border-b-2 border-[#ccff00] transition-all flex items-center justify-center gap-2';
+                if (DOM.tabPlayerContent) DOM.tabPlayerContent.classList.remove('hidden');
+            } else if (tab === 'zone') {
+                if (DOM.tabZoneBtn) DOM.tabZoneBtn.className = 'flex-1 py-3 text-xs font-bold uppercase tracking-wider text-[#ccff00] border-b-2 border-[#ccff00] transition-all flex items-center justify-center gap-2';
+                if (DOM.tabZoneContent) DOM.tabZoneContent.classList.remove('hidden');
+            } else if (tab === 'vision') {
+                if (DOM.tabVisionBtn) DOM.tabVisionBtn.className = 'flex-1 py-3 text-xs font-bold uppercase tracking-wider text-[#ccff00] border-b-2 border-[#ccff00] transition-all flex items-center justify-center gap-2';
+                if (DOM.tabVisionContent) DOM.tabVisionContent.classList.remove('hidden');
+            }
+        }
+
+        function bindUIEvents() {
+            const addEvt = (elem, type, handler) => {
+                if (elem) elem.addEventListener(type, handler);
+            };
+
+            addEvt(DOM.modeLive, 'click', () => setMode('live'));
+            addEvt(DOM.modeCalibrate, 'click', () => setMode('calibrate'));
+            addEvt(DOM.modeSim, 'click', () => {
+                setMode('sim');
+                simulatePitchTrajectory();
+            });
+
+            // Camera Grant Overlay Button Event Listeners
+            if (DOM.btnRequestCam) {
+                DOM.btnRequestCam.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    startCamera();
+                });
+                DOM.btnRequestCam.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    startCamera();
+                }, { passive: false });
+            }
+
+            addEvt(DOM.btnToggleCam, 'click', () => {
+                state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+                startCamera();
+            });
+
+            DOM.distPresets.forEach(btn => {
+                addEvt(btn, 'click', (e) => {
+                    const dist = parseInt(e.currentTarget.dataset.dist);
+                    updateDistanceParameters(dist);
+                });
+            });
+
+            addEvt(DOM.btnResetCount, 'click', resetCount);
+
+            addEvt(DOM.btnClearLogs, 'click', () => {
+                state.pitches = [];
+                const activeP = getActivePlayer();
+                if (activeP) activeP.pitches = [];
+                renderPitchHistory();
+                updatePlayerStatsUI();
+            });
+
+            addEvt(DOM.tabLogBtn, 'click', () => switchTab('log'));
+            addEvt(DOM.tabPlayerBtn, 'click', () => switchTab('player'));
+            addEvt(DOM.tabZoneBtn, 'click', () => switchTab('zone'));
+            addEvt(DOM.tabVisionBtn, 'click', () => switchTab('vision'));
+
+            addEvt(DOM.btnQuickSwitchPlayer, 'click', () => switchTab('player'));
+
+            addEvt(DOM.selectActivePitcher, 'change', (e) => {
+                state.activePlayerId = e.target.value;
+                const activeP = getActivePlayer();
+                if (activeP) {
+                    state.pitches = [...activeP.pitches];
+                }
+                updatePlayerBannerUI();
+                updatePlayerStatsUI();
+                renderPitchHistory();
+            });
+
+            addEvt(DOM.btnToggleAddPlayer, 'click', () => {
+                if (DOM.formAddPlayer) DOM.formAddPlayer.classList.toggle('hidden');
+            });
+
+            addEvt(DOM.btnSavePlayer, 'click', addNewPlayer);
+            addEvt(DOM.btnResetPlayerStats, 'click', resetCurrentPlayerStats);
+
+            addEvt(DOM.inputCameraDistance, 'input', (e) => {
+                updateDistanceParameters(parseInt(e.target.value));
+            });
+
+            const syncZoom = (val) => {
+                state.zoomLevel = parseFloat(val);
+                if (DOM.inputZoom) DOM.inputZoom.value = state.zoomLevel;
+                if (DOM.inputHudZoom) DOM.inputHudZoom.value = state.zoomLevel;
+                if (DOM.valZoom) DOM.valZoom.textContent = state.zoomLevel.toFixed(1) + 'x';
+                if (DOM.valHudZoom) DOM.valHudZoom.textContent = state.zoomLevel.toFixed(1) + 'x';
+            };
+
+            addEvt(DOM.inputZoom, 'input', (e) => syncZoom(e.target.value));
+            addEvt(DOM.inputHudZoom, 'input', (e) => syncZoom(e.target.value));
+
+            addEvt(DOM.inputCameraTilt, 'input', (e) => {
+                state.zone.tiltAngle = parseInt(e.target.value);
+                if (DOM.valCameraTilt) DOM.valCameraTilt.textContent = state.zone.tiltAngle + '°';
+                updateCornerPolygonFromCenter();
+            });
+
+            addEvt(DOM.selectBatterHeight, 'change', (e) => {
+                state.zone.batterHeightFt = parseFloat(e.target.value);
+                state.zone.height = (state.zone.batterHeightFt / 5.5) * 0.36;
+                updateCornerPolygonFromCenter();
+            });
+
+            addEvt(DOM.btnToggleCornerMode, 'click', () => {
+                state.cornerMode = !state.cornerMode;
+                if (DOM.btnToggleCornerMode) {
+                    DOM.btnToggleCornerMode.className = state.cornerMode ? 
+                        'w-full bg-[#ccff00] text-slate-950 text-xs rounded-lg p-2 font-bold shadow' : 
+                        'w-full bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg p-2 font-bold hover:bg-slate-700';
+                }
+            });
+
+            addEvt(DOM.btnRecenterZone, 'click', btnRecenterZoneHandler);
+
+            addEvt(DOM.toggleMeshFilter, 'change', (e) => {
+                state.meshFilterEnabled = e.target.checked;
+            });
+
+            addEvt(DOM.inputLuminance, 'input', (e) => {
+                state.luminanceThreshold = parseInt(e.target.value);
+                if (DOM.valLuminance) DOM.valLuminance.textContent = state.luminanceThreshold;
+            });
+
+            addEvt(DOM.inputMinRadius, 'input', (e) => {
+                state.minRadius = parseInt(e.target.value);
+                if (DOM.valMinRadius) DOM.valMinRadius.textContent = state.minRadius + 'px';
+            });
+
+            addEvt(DOM.inputSensitivity, 'input', (e) => {
+                state.sensitivity = parseInt(e.target.value);
+                const labels = ['Low', 'Med-Low', 'Medium', 'High', 'Ultra'];
+                if (DOM.valSensitivity) DOM.valSensitivity.textContent = labels[state.sensitivity - 1];
+            });
+
+            addEvt(DOM.toggleDebug, 'change', (e) => {
+                state.debugVision = e.target.checked;
+            });
+
+            addEvt(DOM.toggleAudio, 'change', (e) => {
+                state.audioEnabled = e.target.checked;
+            });
+
+            setupCanvasInteraction();
+        }
+
+        function renderSimulatedSoftballField(ctx, w, h) {
+            const turfGrad = ctx.createLinearGradient(0, 0, 0, h);
+            turfGrad.addColorStop(0, '#047857');
+            turfGrad.addColorStop(0.6, '#065f46');
+            turfGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = turfGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            ctx.beginPath();
+            ctx.ellipse(w / 2, h * 0.78, w * 0.45, h * 0.38, 0, 0, Math.PI * 2);
+            ctx.fillStyle = '#9a3412';
+            ctx.fill();
+            ctx.strokeStyle = '#c2410c';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.ellipse(w / 2, h * 0.35, w * 0.12, h * 0.06, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(w / 2 - w * 0.025, h * 0.35 - 3, w * 0.05, 6);
+        }
+
+        function renderDebugOverlay(ctx, w, h) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(204, 255, 0, 0.12)';
+            ctx.fillRect(0, 0, w, h);
+            ctx.fillStyle = '#ccff00';
+            ctx.font = '12px monospace';
+            ctx.fillText(`DIST: ${state.cameraDistanceFt}FT | ZOOM: ${state.zoomLevel}x | MESH FILTER: ${state.meshFilterEnabled ? 'ON' : 'OFF'}`, 20, h - 20);
+            ctx.restore();
+        }
+
+        function renderStrikeZonePolygon(ctx, w, h) {
+            const corners = state.zoneCorners.map(c => ({ x: c.x * w, y: c.y * h }));
+
+            const btmCenter = {
+                x: (corners[2].x + corners[3].x) / 2,
+                y: (corners[2].y + corners[3].y) / 2 + 15
+            };
+            const plateW = Math.abs(corners[2].x - corners[3].x) * 0.85;
+
+            // Home Plate
+            ctx.beginPath();
+            ctx.moveTo(btmCenter.x - plateW / 2, btmCenter.y);
+            ctx.lineTo(btmCenter.x + plateW / 2, btmCenter.y);
+            ctx.lineTo(btmCenter.x + plateW / 2, btmCenter.y + 12);
+            ctx.lineTo(btmCenter.x, btmCenter.y + 26);
+            ctx.lineTo(btmCenter.x - plateW / 2, btmCenter.y + 12);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+            ctx.fill();
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Zone Polygon Outline
+            ctx.beginPath();
+            ctx.moveTo(corners[0].x, corners[0].y);
+            ctx.lineTo(corners[1].x, corners[1].y);
+            ctx.lineTo(corners[2].x, corners[2].y);
+            ctx.lineTo(corners[3].x, corners[3].y);
+            ctx.closePath();
+
+            const isCalib = state.mode === 'calibrate';
+            ctx.fillStyle = isCalib ? 'rgba(204, 255, 0, 0.28)' : 'rgba(204, 255, 0, 0.14)';
+            ctx.fill();
+
+            ctx.strokeStyle = isCalib ? '#ccff00' : 'rgba(204, 255, 0, 0.9)';
+            ctx.lineWidth = isCalib ? 4 : 3;
+            if (isCalib) ctx.setLineDash([8, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 9-Quadrant Grid Lines
+            ctx.strokeStyle = 'rgba(204, 255, 0, 0.4)';
+            ctx.lineWidth = 1.5;
+
+            for (let i = 1; i <= 2; i++) {
+                const ratio = i / 3;
+                const topX = corners[0].x + (corners[1].x - corners[0].x) * ratio;
+                const topY = corners[0].y + (corners[1].y - corners[0].y) * ratio;
+                const btmX = corners[3].x + (corners[2].x - corners[3].x) * ratio;
+                const btmY = corners[3].y + (corners[2].y - corners[3].y) * ratio;
+
+                ctx.beginPath();
+                ctx.moveTo(topX, topY);
+                ctx.lineTo(btmX, btmY);
+                ctx.stroke();
+            }
+
+            for (let j = 1; j <= 2; j++) {
+                const ratio = j / 3;
+                const leftX = corners[0].x + (corners[3].x - corners[0].x) * ratio;
+                const leftY = corners[0].y + (corners[3].y - corners[0].y) * ratio;
+                const rightX = corners[1].x + (corners[2].x - corners[1].x) * ratio;
+                const rightY = corners[1].y + (corners[2].y - corners[1].y) * ratio;
+
+                ctx.beginPath();
+                ctx.moveTo(leftX, leftY);
+                ctx.lineTo(rightX, rightY);
+                ctx.stroke();
+            }
+
+            if (isCalib) {
+                corners.forEach((c) => {
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, state.cornerMode ? 10 : 6, 0, Math.PI * 2);
+                    ctx.fillStyle = state.cornerMode ? '#ccff00' : '#ffffff';
+                    ctx.fill();
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+
+                if (!state.cornerMode) {
+                    const cx = (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4;
+                    const cy = (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ccff00';
+                    ctx.fill();
+                    ctx.strokeStyle = '#0f172a';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function renderSoftballTrajectories(ctx, w, h) {
+            const blobs = state.detectedBlobs;
+            if (blobs.length < 2) return;
+
+            ctx.beginPath();
+            ctx.moveTo(blobs[0].x * w, blobs[0].y * h);
+            for (let i = 1; i < blobs.length; i++) {
+                const p = blobs[i];
+                ctx.lineTo(p.x * w, p.y * h);
+            }
+            ctx.strokeStyle = '#ccff00';
+            ctx.lineWidth = 4;
+            ctx.shadowColor = '#ccff00';
+            ctx.shadowBlur = 12;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            const leadBall = blobs[blobs.length - 1];
+            const bx = leadBall.x * w;
+            const by = leadBall.y * h;
+            const br = Math.max(6, leadBall.r);
+
+            const grad = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, br * 0.1, bx, by, br);
+            grad.addColorStop(0, '#eeff66');
+            grad.addColorStop(0.7, '#ccff00');
+            grad.addColorStop(1, '#99cc00');
+
+            ctx.beginPath();
+            ctx.arc(bx, by, br, 0, Math.PI * 2);
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = '#4d6600';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Red softball seam curve
+            ctx.beginPath();
+            ctx.arc(bx - br * 0.3, by, br * 0.65, Math.PI * 1.55, Math.PI * 0.45);
+            ctx.strokeStyle = '#dc2626';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        function processLoop(timestamp) {
+            frameCount++;
+            if (timestamp - lastFpsUpdate >= 1000) {
+                if (DOM.fpsCounter) DOM.fpsCounter.textContent = `${frameCount} FPS`;
+                frameCount = 0;
+                lastFpsUpdate = timestamp;
+            }
+
+            if (state.mode === 'live') {
+                runVisionDetection();
+            }
+
+            const ctx = DOM.ctx;
+            const w = DOM.canvas.width;
+            const h = DOM.canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            if (state.cameraActive && DOM.video.readyState >= 2) {
+                const zFactor = state.zoomLevel;
+                const sw = w / zFactor;
+                const sh = h / zFactor;
+                const sx = (w - sw) / 2;
+                const sy = (h - sh) / 2;
+                ctx.drawImage(DOM.video, sx, sy, sw, sh, 0, 0, w, h);
+            } else {
+                renderSimulatedSoftballField(ctx, w, h);
+            }
+
+            if (state.debugVision && previousFrameData) {
+                renderDebugOverlay(ctx, w, h);
+            }
+
+            renderStrikeZonePolygon(ctx, w, h);
+            renderSoftballTrajectories(ctx, w, h);
+
+            requestAnimationFrame(processLoop);
+        }
+
+        function initApp() {
+            setupCanvasSize();
+            window.addEventListener('resize', setupCanvasSize);
+            renderRosterDropdown();
+            bindUIEvents();
+            updateCornerPolygonFromCenter();
+            
+            // Attempt initial background camera start
+            startCamera();
+            requestAnimationFrame(processLoop);
+        }
+
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
